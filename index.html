@@ -341,17 +341,54 @@
   .product-info p{ font-size: 13.5px; color: var(--text-soft); margin:0 0 4px 0; }
   .product-price{ font-weight:700; color: var(--primary-dark); font-size:15px; }
 
-  .product-card .box{
-    flex:none;
-    width: 24px; height:24px;
-    border-radius: 7px;
-    border: 2px solid var(--border);
+  .qty-control{
+    display: flex;
+    align-items: center;
+    gap: 10px;
     background: var(--surface);
-    display:flex; align-items:center; justify-content:center;
+    border: 1.5px solid var(--border);
+    border-radius: 999px;
+    padding: 3px 6px;
+    user-select: none;
+    flex: none;
   }
-  .product-card.checked .box{ background: var(--primary); border-color: var(--primary); }
-  .product-card .box svg{ width:14px; height:14px; color:#fff; display:none; }
-  .product-card.checked .box svg{ display:block; }
+
+  .qty-btn{
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: none;
+    background: var(--primary-soft);
+    color: var(--primary);
+    font-size: 16px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease;
+  }
+
+  .qty-btn:hover{
+    background: var(--primary);
+    color: #fff;
+  }
+
+  .qty-btn:active{
+    transform: scale(0.9);
+  }
+
+  .qty-val{
+    font-size: 15px;
+    font-weight: 700;
+    min-width: 18px;
+    text-align: center;
+    color: var(--text);
+  }
+
+  .product-card.checked .qty-control{
+    border-color: var(--primary);
+  }
 
   /* ---------- PROMO / PRECIO ---------- */
   .promo-banner{
@@ -720,16 +757,19 @@
   ];
 
   const productos = [
-    { id:"natural",  nombre:"WeiMelk Natural",   desc:"500 g · sabor suave",     img:"assets/producto-natural.JPG" },
-    { id:"arandano", nombre:"WeiMelk Arándano",  desc:"500 g · sabor frutal",    img:"assets/producto-arandano.JPG" },
-    { id:"uva",    nombre:"WeiMelk Uva",     desc:"500 g · sabor frutal",  img:"assets/producto-uva.JPG" },
+    { id:"natural",  nombre:"WeiMelk Natural",   desc:"500 g · sabor suave",     img:"assets/producto-natural.jpg" },
+    { id:"arandano", nombre:"WeiMelk Arándano",  desc:"500 g · sabor frutal",    img:"assets/producto-arandano.jpg" },
+    { id:"uva",    nombre:"WeiMelk Uva",     desc:"500 g · sabor frutal",  img:"assets/producto-uva.jpg" },
   ];
 
   // Precio por unidad según cuántos sabores se elijan
   const PRECIO_1 = 35;
   const PRECIO_2_O_3 = 30;
 
-  const state = { sintomas: [], productos: [] };
+  const state = { sintomas: [], productos: {} };
+  productos.forEach(p => {
+    state.productos[p.id] = 0;
+  });
 
   // ---------- RENDER: condiciones ----------
   const pillPreview = document.getElementById('pillPreview');
@@ -781,29 +821,41 @@
         <h3>${p.nombre}</h3>
         <p>${p.desc}</p>
       </div>
-      <div class="box">${checkSvg}</div>
+      <div class="qty-control" onclick="event.stopPropagation()">
+        <button type="button" class="qty-btn" onclick="adjustQty('${p.id}', -1)">−</button>
+        <span class="qty-val" id="qty-${p.id}">0</span>
+        <button type="button" class="qty-btn" onclick="adjustQty('${p.id}', 1)">+</button>
+      </div>
     `;
-    el.addEventListener('click', () => toggleProduct(p.id));
+    el.addEventListener('click', () => {
+      if ((state.productos[p.id] || 0) === 0) {
+        adjustQty(p.id, 1);
+      }
+    });
     productList.appendChild(el);
     productCards[p.id] = el;
   });
 
-  function toggleProduct(id){
-    if(state.productos.includes(id)){
-      state.productos = state.productos.filter(x => x !== id);
+  function adjustQty(id, change){
+    const currentQty = state.productos[id] || 0;
+    const newQty = Math.max(0, currentQty + change);
+    state.productos[id] = newQty;
+
+    document.getElementById(`qty-${id}`).textContent = newQty;
+
+    if(newQty > 0){
+      productCards[id].classList.add('checked');
     } else {
-      state.productos.push(id);
+      productCards[id].classList.remove('checked');
     }
-    productCards[id].classList.toggle('checked');
     updatePriceSummary();
   }
 
   function selectAllProducts(){
     productos.forEach(p => {
-      if(!state.productos.includes(p.id)){
-        state.productos.push(p.id);
-        productCards[p.id].classList.add('checked');
-      }
+      state.productos[p.id] = 1;
+      document.getElementById(`qty-${p.id}`).textContent = 1;
+      productCards[p.id].classList.add('checked');
     });
     updatePriceSummary();
     window.scrollTo({ top: document.getElementById('productList').offsetTop - 100, behavior: 'smooth' });
@@ -814,13 +866,17 @@
   }
 
   function updatePriceSummary(){
-    const count = state.productos.length;
+    let totalQty = 0;
+    productos.forEach(p => {
+      totalQty += (state.productos[p.id] || 0);
+    });
+
     const psLabel = document.getElementById('psLabel');
     const psTotal = document.getElementById('psTotal');
     const psSave = document.getElementById('psSave');
     const btnNext = document.getElementById('btnStep2Next');
 
-    if(count === 0){
+    if(totalQty === 0){
       psLabel.textContent = 'Selecciona al menos un sabor';
       psTotal.textContent = '';
       psSave.textContent = '';
@@ -828,19 +884,21 @@
       return;
     }
 
-    const precioUnit = unitPrice(count);
-    const total = precioUnit * count;
-    const nombresSabor = count === 1 ? '1 sabor' : `${count} sabores`;
+    const precioUnit = unitPrice(totalQty);
+    const total = precioUnit * totalQty;
+    const nombreUnidades = totalQty === 1 ? '1 unidad' : `${totalQty} unidades`;
 
-    psLabel.textContent = `${nombresSabor} · $${precioUnit} c/u`;
+    psLabel.textContent = `${nombreUnidades} · $${precioUnit} c/u`;
     psTotal.textContent = `$${total}`;
 
-    if(count === 1){
-      psSave.textContent = 'Elige 2 o 3 y baja a $30 c/u';
-    } else if(count === 3){
+    if(totalQty === 1){
+      psSave.textContent = 'Elige 2 o más unidades y baja a $30 c/u';
+    } else if(totalQty === 3){
       psSave.textContent = '¡Ahorras $15 con el combo de 3!';
+    } else if(totalQty === 2) {
+      psSave.textContent = 'Agrega 1 unidad más para el combo de 3';
     } else {
-      psSave.textContent = 'Agrega 1 sabor más y ahorra aún más';
+      psSave.textContent = '¡Excelente elección!';
     }
 
     btnNext.disabled = false;
@@ -876,14 +934,22 @@
     const municipio = document.getElementById('municipio').value.trim();
     const direccion = document.getElementById('direccion').value.trim();
 
-    const seleccionados = productos.filter(p => state.productos.includes(p.id));
-    const count = seleccionados.length;
-    const precioUnit = unitPrice(count);
-    const total = precioUnit * count;
+    const seleccionados = productos.filter(p => (state.productos[p.id] || 0) > 0);
+    let totalQty = 0;
+    productos.forEach(p => {
+      totalQty += (state.productos[p.id] || 0);
+    });
+    const precioUnit = unitPrice(totalQty);
+    const total = precioUnit * totalQty;
 
     const sumProducto = document.getElementById('sumProducto');
     sumProducto.innerHTML = '';
-    seleccionados.forEach(p => sumProducto.insertAdjacentHTML('beforeend', `<span class="pill">${p.nombre.replace('WeiMelk ', '')}</span>`));
+    seleccionados.forEach(p => {
+      const qty = state.productos[p.id];
+      const name = p.nombre.replace('WeiMelk ', '');
+      const label = qty > 1 ? `${qty}x ${name}` : name;
+      sumProducto.insertAdjacentHTML('beforeend', `<span class="pill">${label}</span>`);
+    });
 
     document.getElementById('sumTotal').textContent = `$${total} ($${precioUnit} c/u)`;
     document.getElementById('sumNombre').textContent = nombre || '—';
@@ -903,7 +969,10 @@
       ? 'No especificó'
       : sintomas.filter(s => state.sintomas.includes(s.id)).map(s => '- ' + s.label.replace(/^\S+\s/, '')).join('\n');
 
-    const listaProductos = seleccionados.map(p => '- ' + p.nombre).join('\n');
+    const listaProductos = seleccionados.map(p => {
+      const qty = state.productos[p.id];
+      return `- ${qty}x ${p.nombre}`;
+    }).join('\n');
 
     const mensaje =
 `🛒 *Nuevo pedido – WeiMelk (Trenno)*
